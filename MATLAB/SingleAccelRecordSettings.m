@@ -7,7 +7,7 @@ ACCEL_SCALE = 2; % Max accel reading, g (+/-) (2,4,8, or 16)
 MAX_RAW_OUTPUT = 32768; % no touch
 G_CONVERSION = ACCEL_SCALE/MAX_RAW_OUTPUT; % no touch
 % Connect to Arduino through Serial
-ARDUINO_SERIAL_PORT = 'COM8'; % Change this as needed
+ARDUINO_SERIAL_PORT = 'COM3'; % Change this as needed
 global isWaiting;
 isWaiting = false;
 clear arduinoSerial;

@@ -1,18 +1,23 @@
 clear; close all; fclose all; delete(instrfind); clc; % Start Fresh (TM)
-% Serial settings
+% USER SETTINGS
+% The following line only works if
+% - the only available COM ports are Arduinos
+% - all Arduinos have the right firmware uploaded
+% TODO auto detect
+ARDUINO_SERIAL_PORTS = serialportlist;
+REC_LENGTH = 8192; % Length of recording, samples (power of 2 recommended)
+ACCEL_FREQ = 100; % Accel sample rate, Hz (100,200,250,333,or 500)
+ACCEL_SCALE = 2; % Accel range, g (+/-) (2,4,8, or 16)
+PLOT_HISTORY = 500;
+UPDATE_RATE = 20; % Update plots this many times per second
+% no touch
 BAUD_RATE = 115200;
-ARDUINO_SERIAL_PORTS = ["COM9", "COM4", "COM21"];
+MAX_RAW_OUTPUT = 32768;
+G_CONVERSION = ACCEL_SCALE/MAX_RAW_OUTPUT;
+% Connect to Arduinos through Serial
 NUM_ARDUINOS = length(ARDUINO_SERIAL_PORTS);
 clear serialPortArray;
 serialPortArray = [];
-% Accelerometer settings
-REC_LENGTH = 8192; % Length of recording, samples (power of 2 recommended)
-ACCEL_FREQ = 500; % Recording rate, Hz (100,200,250,333,or 500)
-% NOTE: right now LPF is fixed at 184 Hz, will add setting eventually
-ACCEL_SCALE = 2; % Max accel reading, g (+/-) (2,4,8, or 16)
-MAX_RAW_OUTPUT = 32768; % no touch
-G_CONVERSION = ACCEL_SCALE/MAX_RAW_OUTPUT; % no touch
-% Connect to Arduinos through Serial
 for portIndex = 1:NUM_ARDUINOS
     disp(['Connecting to ' char(ARDUINO_SERIAL_PORTS(portIndex)) '...']);
     thisSerialPort = serialport(ARDUINO_SERIAL_PORTS(portIndex),BAUD_RATE);
@@ -30,23 +35,33 @@ for portIndex = 1:NUM_ARDUINOS
     disp("Sending scale...");
     writeLineAndWait(serialPortArray(portIndex), ['s' int2str(ACCEL_SCALE)]);
 end
-disp("Ready to begin acquisition, press any key to begin: ");
-pause;
-% do a lil prep
+disp("Starting up live feed...");
+xplots = cell(NUM_ARDUINOS,1);
+yplots = cell(NUM_ARDUINOS,1);
+zplots = cell(NUM_ARDUINOS,1);
+tiledlayout(NUM_ARDUINOS,1);
+for portIndex = 1:NUM_ARDUINOS
+    nexttile
+    hold on;
+    xplots{portIndex} = plot(0,0);
+    yplots{portIndex} = plot(0,0);
+    zplots{portIndex} = plot(0,0);
+    hold off;
+    xlim([0 PLOT_HISTORY]);
+    ylim([-ACCEL_SCALE ACCEL_SCALE]);
+    title(char(ARDUINO_SERIAL_PORTS(portIndex)));
+end
+
+% start all arduinos in as quick of succession as possible in Matlab
 numRecordedSamples = 0;
 recordedData = cell(NUM_ARDUINOS,1);
 for portIndex = 1:NUM_ARDUINOS
     flush(serialPortArray(portIndex));
-    recordedData{portIndex} = zeros(REC_LENGTH, 3);
-end
-% some timing setup
-lastPrintTime = 0;
-startTime = tic;
-% start all arduinos in as quick of succession as possible in Matlab
-for portIndex = 1:NUM_ARDUINOS
     writeline(serialPortArray(portIndex), ['g' int2str(REC_LENGTH)]);
 end
-while(numRecordedSamples < REC_LENGTH)
+lastPrintTime = 0;
+startTime = tic;
+while(ishandle(xplots{1}))
     for portIndex = 1:NUM_ARDUINOS
         % blocking read
         dataIn = uint8(read(serialPortArray(portIndex),7,'uint8')); % includes terminator :/
@@ -56,53 +71,25 @@ while(numRecordedSamples < REC_LENGTH)
         recordedData{portIndex}(numRecordedSamples+1,:) = [x, y, z];
     end
     numRecordedSamples = numRecordedSamples+1;
-    if(toc(startTime) - lastPrintTime > 1)
-        lastPrintTime = toc(startTime);
-        disp(['t = +' num2str(toc(startTime)) 's: ' int2str(numRecordedSamples) '/' int2str(REC_LENGTH)]);
+    if(toc(startTime) - lastPrintTime > (1/UPDATE_RATE))
+        % remove old samples
+        if(numRecordedSamples > PLOT_HISTORY)
+            for portIndex = 1:NUM_ARDUINOS
+                recordedData{portIndex} = recordedData{portIndex}(end-PLOT_HISTORY+1:end,:);
+            end
+            numRecordedSamples = PLOT_HISTORY;
+        end
+        % update plot
+        for portIndex = 1:NUM_ARDUINOS
+            set(xplots{portIndex}, 'XData', [1:numRecordedSamples], 'YData', recordedData{portIndex}(:,1));
+            set(yplots{portIndex}, 'XData', [1:numRecordedSamples], 'YData', recordedData{portIndex}(:,2));
+            set(zplots{portIndex}, 'XData', [1:numRecordedSamples], 'YData', recordedData{portIndex}(:,3));
+        end
     end
 end
-disp("Collection finished!");
-toc(startTime);
-%%
-timeArray = (1/ACCEL_FREQ)*(1:REC_LENGTH);
-figure;
-tiledlayout(NUM_ARDUINOS,1);
-for portIndex = 1:NUM_ARDUINOS
-    nexttile
-    hold on;
-    plot(timeArray,recordedData{portIndex}(:,1), "DisplayName", "X");
-    plot(timeArray,recordedData{portIndex}(:,2), "DisplayName", "Y");
-    plot(timeArray,recordedData{portIndex}(:,3), "DisplayName", "Z");
-    hold off;
-    xlabel("Time (s)");
-    xlim([2 4]);
-    ylabel("Acceleration");
-    legend;
-    title(['Accelerometer on ' char(ARDUINO_SERIAL_PORTS(portIndex))]);
-end
-%% Plot FFTs
+clear serialPortArray;
 
-figure;
-tiledlayout(NUM_ARDUINOS,1);
-for portIndex = 1:NUM_ARDUINOS
-    nexttile
-    fftX=abs(fft(recordedData{portIndex}(:,1))).^2;
-    fftY=abs(fft(recordedData{portIndex}(:,2))).^2;
-    fftZ=abs(fft(recordedData{portIndex}(:,3))).^2;
-    freqHz = (0:(length(fftX)-1))*ACCEL_FREQ/length(fftX);
-    loglog(freqHz,fftX, "DisplayName", "X");
-    hold on;
-    loglog(freqHz,fftY, "DisplayName", "Y");
-    loglog(freqHz,fftZ, "DisplayName", "Z");
-    hold off;
-    legend;
-    grid on
-    xlim([ACCEL_FREQ/length(fftX) ACCEL_FREQ/2]);
-    xlabel("Frequency (Hz)");
-    ylabel("PSD");
-    title(['Accelerometer on ' char(ARDUINO_SERIAL_PORTS(portIndex))]);
-end
-
+%% Functions
 function [x, y, z] = getAccelVals(lineIn,G_CONVERSION)
     % take 6-byte array and return accelerometer values scaled in g
     x = G_CONVERSION*double(swapbytes(typecast(lineIn(1:2), 'int16')));
