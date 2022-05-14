@@ -57,7 +57,7 @@ numRecordedSamples = 0;
 recordedData = cell(NUM_ARDUINOS,1);
 for portIndex = 1:NUM_ARDUINOS
     flush(serialPortArray(portIndex));
-    writeline(serialPortArray(portIndex), ['g' int2str(REC_LENGTH)]);
+    writeline(serialPortArray(portIndex), 'c');
 end
 lastPrintTime = 0;
 startTime = tic;

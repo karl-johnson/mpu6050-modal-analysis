@@ -126,15 +126,15 @@ void loop() {
               readReturnVal = readAllAccelerometers(accelArray, accelEnablePins, tempData);
               //Serial.println(readReturnVal);
               if(readReturnVal == 1) {
-                /*
+                
                 for(int i = 0; i < LINE_SIZE; i++) {
                   Serial.write(tempData[i]);
-                }*/
-                
+                }
+                /*
                 for(int i = 0; i < LINE_SIZE; i+=2) {
                   Serial.print((((int16_t)tempData[i]) << 8) | tempData[i+1]);
                   Serial.print(" ");
-                }
+                }*/
                 Serial.write('\n');
                 readDataCount++;
               }
@@ -152,13 +152,14 @@ void loop() {
             // read raw accel/gyro measurements from device
             readReturnVal = readAllAccelerometers(accelArray, accelEnablePins, tempData);
             if(readReturnVal == 1) {
-              /*for(int i = 0; i < LINE_SIZE; i++) {
+              for(int i = 0; i < LINE_SIZE; i++) {
                 Serial.write(tempData[i]);
-              }*/
+              }
+              /*
               for(int i = 0; i < LINE_SIZE; i+=2) {
                 Serial.print((((int16_t)tempData[i]) << 8) | tempData[i+1]);
                 Serial.print(" ");
-              }
+              }*/
               Serial.write('\n');
             }
           }
@@ -285,7 +286,7 @@ int readAllAccelerometers(MPU6050* accels[NUM_ACCELS], const int accelPins[NUM_A
     uint8_t tempData[PACKET_SIZE];
     digitalWrite(accelPins[accelIndex],LOW); // enable this accelerometer
     while(readReturnVal != 1) {
-      Serial.println(accelIndex);
+      //Serial.println(accelIndex);
       readReturnVal = accelArray[accelIndex]->GetCurrentFIFOPacket(tempData, PACKET_SIZE);
     }
     for(int i = 0; i < PACKET_SIZE; i++) {

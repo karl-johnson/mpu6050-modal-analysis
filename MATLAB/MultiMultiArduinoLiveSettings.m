@@ -19,18 +19,22 @@ NUM_ARDUINOS = length(ARDUINO_SERIAL_PORTS);
 clear serialPortArray;
 serialPortArray = [];
 numAccelsPerPort = zeros(1,NUM_ARDUINOS);
+accelNames = [];
 for portIndex = 1:NUM_ARDUINOS
     disp(['Connecting to ' char(ARDUINO_SERIAL_PORTS(portIndex)) '...']);
     thisSerialPort = serialport(ARDUINO_SERIAL_PORTS(portIndex),BAUD_RATE);
-    configureTerminator(thisSerialPort,uint8(newline));
-    configureCallback(thisSerialPort,"terminator",@showArduinoOutput);
-    waitForResponse(thisSerialPort); % wait for Arduino to wake up
-    % once it's responded, add this to array
-    % TODO READ RESPONSE BEFORE ADDING
-    numAccelsPerPort(portIndex) = numAccels;
+    %configureTerminator(thisSerialPort,uint8(newline));
+    %configureCallback(thisSerialPort,"terminator",@showArduinoOutput);
+    startupMessage = char(readline(thisSerialPort));
+    disp(startupMessage);
+    numAccelsPerPort(portIndex) = str2double(startupMessage(1));
     serialPortArray = [serialPortArray; thisSerialPort];
+    for accelIndex = 1:numAccelsPerPort(portIndex)
+        totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
+        accelNames = [accelNames string([char(ARDUINO_SERIAL_PORTS(portIndex)) '.' num2str(accelIndex)])];
+    end
 end
-totalAccels = sum(numAccelsPerPort, 'all');
+totalAccels = sum(numAccelsPerPort,'all');
 % Configure settings on all accelerometers
 for portIndex = 1:NUM_ARDUINOS
     disp(['Writing settings to ' char(ARDUINO_SERIAL_PORTS(portIndex)) '...']);
@@ -55,7 +59,7 @@ for portIndex = 1:NUM_ARDUINOS
         hold off;
         xlim([0 PLOT_HISTORY]);
         ylim([-ACCEL_SCALE ACCEL_SCALE]);
-        title([char(ARDUINO_SERIAL_PORTS(portIndex)) '.' char(accelIndex)]);
+        title(accelNames(totalAccelIndex));
     end
 end
 % start all arduinos in as quick of succession as possible in Matlab
@@ -75,7 +79,7 @@ while(ishandle(xplots{1}))
         dataIn = dataIn(1:end-1); % remove terminator
         % TODO stop using terminator, it's useless
         for accelIndex = 1:numAccelsPerPort(portIndex)
-            totalAccelIndex = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
+            totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
             [x, y, z] = getAccelVals(dataIn(6*(accelIndex-1)+1:6*accelIndex),G_CONVERSION);
             recordedData{totalAccelIndex}(numRecordedSamples+1,:) = [x, y, z];
         end
@@ -86,7 +90,7 @@ while(ishandle(xplots{1}))
         if(numRecordedSamples > PLOT_HISTORY)
             for portIndex = 1:NUM_ARDUINOS
                 for accelIndex = 1:numAccelsPerPort(portIndex)
-                    totalAccelIndex = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
+                    totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
                     recordedData{totalAccelIndex} = recordedData{totalAccelIndex}(end-PLOT_HISTORY+1:end,:);
                 end
             end
@@ -95,7 +99,7 @@ while(ishandle(xplots{1}))
         % update plot
         for portIndex = 1:NUM_ARDUINOS
             for accelIndex = 1:numAccelsPerPort(portIndex)
-                totalAccelIndex = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
+                totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
                 set(xplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,1));
                 set(yplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,2));
                 set(zplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,3));
@@ -106,6 +110,10 @@ end
 clear serialPortArray;
 
 %% Functions
+function index = getTotalIndex(numAccelsPerPort, portIndex, accelIndex)
+    index = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
+end
+
 function [x, y, z] = getAccelVals(lineIn,G_CONVERSION)
     % take 6-byte array and return accelerometer values scaled in g
     x = G_CONVERSION*double(swapbytes(typecast(lineIn(1:2), 'int16')));

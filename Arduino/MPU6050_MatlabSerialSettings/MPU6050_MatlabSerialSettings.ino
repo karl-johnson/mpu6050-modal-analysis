@@ -53,7 +53,7 @@ void setup() {
     accelgyro.setAccelFIFOEnabled(true);
 
     pinMode(LED_BUILTIN, OUTPUT);    
-    Serial.println("Arduino Ready!");
+    Serial.println("1 accel ready!");
 }
 
 const int packetSize = 6;
@@ -131,6 +131,26 @@ void loop() {
             Serial.print(readDataCount);
             Serial.println(" values.");
           }
+          break;
+        case 'c':
+            digitalWrite(LED_BUILTIN, HIGH);
+            accelgyro.resetFIFO();
+            accelgyro.setFIFOEnabled(true);
+            digitalWrite(LED_BUILTIN, LOW);
+            // time to do an acquisition
+            while(1) {
+              // read raw accel/gyro measurements from device
+              readReturnVal = accelgyro.GetCurrentFIFOPacket(tempData, packetSize);
+              if(readReturnVal == 1) {
+                for(int i = 0; i < packetSize; i++) {
+                  Serial.write(tempData[i]);
+                }
+                Serial.write('\n');
+              }
+              else if(readReturnVal == 2) {
+                Serial.println("Buffer overflow!");
+              }
+            }
           break;
         default:
           Serial.print("Bad command: ");
