@@ -5,8 +5,9 @@ clear; close all; fclose all; delete(instrfind); clc; % Start Fresh (TM)
 % - the only available COM ports are Arduinos
 % - all Arduinos have the right firmware uploaded
 ARDUINO_SERIAL_PORTS = serialportlist;
-REC_LENGTH = 8192; % Length of recording, samples (power of 2 recommended)
-ACCEL_FREQ = 100; % Accel sample rate, Hz (100,200,250,333,or 500)
+REC_LENGTH = 1024; % Length of recording, samples (power of 2 recommended)
+ACCEL_FREQ = 200; % Accel sample rate, Hz (100,200,250,333,or 500)
+% RIGHT NOW MAX 200 HZ
 ACCEL_SCALE = 2; % Accel range, g (+/-) (2,4,8, or 16)
 PLOT_HISTORY = 500;
 UPDATE_RATE = 20; % Update plots this many times per second
@@ -44,35 +45,25 @@ for portIndex = 1:NUM_ARDUINOS
     writeLineAndWait(serialPortArray(portIndex), ['s' int2str(ACCEL_SCALE)]);
 end
 
-disp("Starting up live feed...");
-xplots = cell(totalAccels,1);
-yplots = cell(totalAccels,1);
-zplots = cell(totalAccels,1);
-tiledlayout(totalAccels,1);
-for portIndex = 1:NUM_ARDUINOS
-    for accelIndex = 1:numAccelsPerPort(portIndex)
-        totalAccelIndex = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
-        nexttile
-        hold on;
-        xplots{totalAccelIndex} = plot(0,0);
-        yplots{totalAccelIndex} = plot(0,0);
-        zplots{totalAccelIndex} = plot(0,0);
-        hold off;
-        xlim([0 PLOT_HISTORY]);
-        ylim([-ACCEL_SCALE ACCEL_SCALE]);
-        title(accelNames(totalAccelIndex));
-    end
-end
-% start all arduinos in as quick of succession as possible in Matlab
+disp("Ready to begin acquisition, press any key to begin: ");
+pause;
+
+% do a lil prep
 numRecordedSamples = 0;
-recordedData = cell(totalAccels,1);
+recordedData = cell(NUM_ARDUINOS,1);
 for portIndex = 1:NUM_ARDUINOS
     flush(serialPortArray(portIndex));
-    writeline(serialPortArray(portIndex), 'c');
+    recordedData{portIndex} = zeros(REC_LENGTH, 3);
 end
+
+% some timing setup
 lastPrintTime = 0;
 startTime = tic;
-while(ishandle(xplots{1}))
+% start all arduinos in as quick of succession as possible in Matlab
+for portIndex = 1:NUM_ARDUINOS
+    writeline(serialPortArray(portIndex), ['g' int2str(REC_LENGTH)]);
+end
+while(numRecordedSamples < REC_LENGTH)
     for portIndex = 1:NUM_ARDUINOS
         % blocking read
         numBytes = 6*numAccelsPerPort(portIndex) + 1;
@@ -86,30 +77,59 @@ while(ishandle(xplots{1}))
         end
     end
     numRecordedSamples = numRecordedSamples+1;
-    if(toc(startTime) - lastPrintTime > (1/UPDATE_RATE))
-        % remove old samples
-        if(numRecordedSamples > PLOT_HISTORY)
-            for portIndex = 1:NUM_ARDUINOS
-                for accelIndex = 1:numAccelsPerPort(portIndex)
-                    totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
-                    recordedData{totalAccelIndex} = recordedData{totalAccelIndex}(end-PLOT_HISTORY+1:end,:);
-                end
-            end
-            numRecordedSamples = PLOT_HISTORY;
-        end
-        % update plot
-        for portIndex = 1:NUM_ARDUINOS
-            for accelIndex = 1:numAccelsPerPort(portIndex)
-                totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
-                set(xplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,1));
-                set(yplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,2));
-                set(zplots{totalAccelIndex}, 'XData', 1:numRecordedSamples, 'YData', recordedData{totalAccelIndex}(:,3));
-            end
-        end
+    if(toc(startTime) - lastPrintTime > 1)
+        lastPrintTime = toc(startTime);
+        disp(['t = +' num2str(toc(startTime)) 's: ' int2str(numRecordedSamples) '/' int2str(REC_LENGTH)]);
     end
 end
+disp("Collection finished!");
+toc(startTime);
+uisave({'recordedData','accelNames','ACCEL_FREQ','G_CONVERSION'});
 clear serialPortArray;
-
+%%
+timeArray = (1/ACCEL_FREQ)*(1:REC_LENGTH);
+figure;
+tiledlayout(totalAccels,1);
+for portIndex = 1:NUM_ARDUINOS
+    for accelIndex = 1:numAccelsPerPort(portIndex)
+        totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
+        nexttile
+        hold on;
+        plot(timeArray,recordedData{totalAccelIndex}(:,1), "DisplayName", "X");
+        plot(timeArray,recordedData{totalAccelIndex}(:,2), "DisplayName", "Y");
+        plot(timeArray,recordedData{totalAccelIndex}(:,3), "DisplayName", "Z");
+        hold off;
+        xlabel("Time (s)");
+        ylabel("Acceleration");
+        ylim([-ACCEL_SCALE ACCEL_SCALE]);
+        title(accelNames(totalAccelIndex));
+    end
+end
+%% Plot FFTs
+figure;
+tiledlayout(totalAccels,1);
+for portIndex = 1:NUM_ARDUINOS
+    for accelIndex = 1:numAccelsPerPort(portIndex)
+        totalAccelIndex = getTotalIndex(numAccelsPerPort, portIndex, accelIndex);
+        nexttile
+        fftX=abs(fft(recordedData{totalAccelIndex}(:,1))).^2;
+        fftY=abs(fft(recordedData{totalAccelIndex}(:,2))).^2;
+        fftZ=abs(fft(recordedData{totalAccelIndex}(:,3))).^2;
+        freqHz = (0:(length(fftX)-1))*ACCEL_FREQ/length(fftX);
+        loglog(freqHz,fftX, "DisplayName", "X");
+        hold on;
+        loglog(freqHz,fftY, "DisplayName", "Y");
+        loglog(freqHz,fftZ, "DisplayName", "Z");
+        hold off;
+        legend;
+        grid on
+        xlim([ACCEL_FREQ/length(fftX) ACCEL_FREQ/2]);
+        xlabel("Frequency (Hz)");
+        ylabel("PSD");
+        ylim([0.1 1000]);
+        title(accelNames(totalAccelIndex));
+    end
+end
 %% Functions
 function index = getTotalIndex(numAccelsPerPort, portIndex, accelIndex)
     index = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
