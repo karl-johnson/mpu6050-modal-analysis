@@ -7,7 +7,7 @@ clear; close all; fclose all; delete(instrfind); clc; % Start Fresh (TM)
 ARDUINO_SERIAL_PORTS = serialportlist;
 REC_LENGTH = 8192; % Length of recording, samples (power of 2 recommended)
 ACCEL_FREQ = 100; % Accel sample rate, Hz (100,200,250,333,or 500)
-ACCEL_SCALE = 2; % Accel range, g (+/-) (2,4,8, or 16)
+ACCEL_SCALE = 4; % Accel range, g (+/-) (2,4,8, or 16)
 PLOT_HISTORY = 500;
 UPDATE_RATE = 20; % Update plots this many times per second
 % no touch

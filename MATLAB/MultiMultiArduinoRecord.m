@@ -5,12 +5,12 @@ clear; close all; fclose all; delete(instrfind); clc; % Start Fresh (TM)
 % - the only available COM ports are Arduinos
 % - all Arduinos have the right firmware uploaded
 ARDUINO_SERIAL_PORTS = serialportlist;
-REC_LENGTH = 1024; % Length of recording, samples (power of 2 recommended)
+REC_LENGTH = 2048; % Length of recording, samples (power of 2 recommended)
 ACCEL_FREQ = 200; % Accel sample rate, Hz (100,200,250,333,or 500)
 % RIGHT NOW MAX 200 HZ
-ACCEL_SCALE = 2; % Accel range, g (+/-) (2,4,8, or 16)
+    ACCEL_SCALE = 2; % Accel range, g (+/-) (2,4,8, or 16)
 PLOT_HISTORY = 500;
-UPDATE_RATE = 20; % Update plots this many times per second
+UPDATE_RATE = 20; %  Update plots this many times per second
 % no touch
 BAUD_RATE = 115200;
 MAX_RAW_OUTPUT = 32768;
@@ -84,7 +84,7 @@ while(numRecordedSamples < REC_LENGTH)
 end
 disp("Collection finished!");
 toc(startTime);
-uisave({'recordedData','accelNames','ACCEL_FREQ','G_CONVERSION'});
+uisave();
 clear serialPortArray;
 %%
 timeArray = (1/ACCEL_FREQ)*(1:REC_LENGTH);
@@ -105,6 +105,18 @@ for portIndex = 1:NUM_ARDUINOS
         title(accelNames(totalAccelIndex));
     end
 end
+%%
+totalAccelIndex = 1;
+figure;
+hold on;
+plot(timeArray,recordedData{totalAccelIndex}(:,1), "DisplayName", "X");
+plot(timeArray,recordedData{totalAccelIndex}(:,2), "DisplayName", "Y");
+plot(timeArray,recordedData{totalAccelIndex}(:,3), "DisplayName", "Z");
+hold off;
+xlabel("Time (s)");
+ylabel("Acceleration");
+ylim([-ACCEL_SCALE ACCEL_SCALE]);
+title(accelNames(totalAccelIndex));
 %% Plot FFTs
 figure;
 tiledlayout(totalAccels,1);
@@ -130,6 +142,25 @@ for portIndex = 1:NUM_ARDUINOS
         title(accelNames(totalAccelIndex));
     end
 end
+%%
+totalAccelIndex = 1;
+fftX=abs(fft(recordedData{totalAccelIndex}(:,1))).^2;
+fftY=abs(fft(recordedData{totalAccelIndex}(:,2))).^2;
+fftZ=abs(fft(recordedData{totalAccelIndex}(:,3))).^2;
+freqHz = (0:(length(fftX)-1))*ACCEL_FREQ/length(fftX);
+figure;
+loglog(freqHz,fftX, "DisplayName", "X");
+hold on;
+loglog(freqHz,fftY, "DisplayName", "Y");
+loglog(freqHz,fftZ, "DisplayName", "Z");
+hold off;
+legend;
+grid on
+xlim([ACCEL_FREQ/length(fftX) ACCEL_FREQ/2]);
+xlabel("Frequency (Hz)");
+ylabel("PSD");
+%ylim([0.1 1000]);
+title(accelNames(totalAccelIndex));
 %% Functions
 function index = getTotalIndex(numAccelsPerPort, portIndex, accelIndex)
     index = sum(numAccelsPerPort(1:portIndex-1)) + accelIndex;
